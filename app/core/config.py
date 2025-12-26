@@ -24,8 +24,9 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
+        # PERUBAHAN DI SINI: Ganti 'mysqlconnector' jadi 'pymysql'
         return (
-            f"mysql+mysqlconnector://{self.db_user}:{self.db_password}"
+            f"mysql+pymysql://{self.db_user}:{self.db_password}"
             f"@{self.db_host}:{self.db_port}/{self.db_name}"
         )
 
@@ -33,7 +34,6 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     """Return cached application settings instance."""
-
     return Settings()
 
 
