@@ -1,9 +1,7 @@
 import joblib
-import pandas as pd
+import numpy as np
 import os
-import sys
 
-# Tentukan path absolut biar tidak bingung
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODEL_PATH = os.path.join(BASE_DIR, "models_ml", "current_stress_model.joblib")
 
@@ -11,58 +9,49 @@ class StressModelService:
     def __init__(self):
         self.model = None
         self.scaler = None
+        self.feature_names = None
         self.load_model()
 
     def load_model(self):
-        print(f"🔍 Mencari model di: {MODEL_PATH}") # DEBUG PRINT
-        
+        # Gunakan logging print sederhana untuk debugging saat startup
+        print(f"INFO: Loading model from {MODEL_PATH}")
         if not os.path.exists(MODEL_PATH):
-            print(f"⚠️  FILE TIDAK DITEMUKAN! Pastikan file ada di folder tersebut.")
+            print(f"ERROR: Model file not found at {MODEL_PATH}")
             return
 
         try:
             data = joblib.load(MODEL_PATH)
-            
-            # Unpack dictionary artifacts
             if isinstance(data, dict):
                 self.model = data.get('model')
                 self.scaler = data.get('scaler')
+                self.feature_names = data.get('feature_names')
             else:
                 self.model = data
-            
-            print("✅ ML Model Berhasil Dimuat!")
+            print("INFO: ML Model loaded successfully (Optimized Runtime)")
         except Exception as e:
-            print(f"❌ Error saat load joblib: {e}")
+            print(f"ERROR: Failed to load model artifacts: {e}")
 
-    # Logic ini disamakan PERSIS dengan predict.ipynb kamu
-    def _calculate_academic_performance_encoded(self, gpa):
-        # 1. Tentukan Kategori (Sesuai fungsi categorize_academic_performance di notebook)
-        if gpa >= 3.5:
-            category = 'Excellent'
-        elif 3.0 <= gpa < 3.5:
-            category = 'Good'
-        elif 2.0 <= gpa < 3.0:
-            category = 'Fair'
-        else:
-            category = 'Poor'
+    def _calculate_academic_performance_encoded(self, gpa: float) -> int:
+        """Categorize GPA based on defined academic standards."""
+        if gpa >= 3.5: category = 'Excellent'
+        elif 3.0 <= gpa < 3.5: category = 'Good'
+        elif 2.0 <= gpa < 3.0: category = 'Fair'
+        else: category = 'Poor'
         
-        # 2. Mapping ke Angka (Sesuai mapping_performance di notebook)
         mapping = {'Poor': 0, 'Fair': 1, 'Good': 2, 'Excellent': 3}
         return mapping.get(category, 0)
 
     def predict_stress(self, input_data: dict) -> str:
         if not self.model:
-            print("❌ Model belum siap saat predict dipanggil.")
-            return "Error: Model not ready"
+            return "Error: Model not initialized"
 
         try:
-            # Feature Engineering
-            gpa = input_data['gpa']
-            # Pakai fungsi baru yang logic-nya sama dengan Notebook
+            # 1. Feature Engineering
+            gpa = float(input_data['gpa'])
             academic_encoded = self._calculate_academic_performance_encoded(gpa)
 
-            # Buat DataFrame
-            df = pd.DataFrame([{
+            # 2. Data Preparation (Using Dictionary instead of DataFrame for memory efficiency)
+            raw_features = {
                 'Study_Hours_Per_Day': input_data['study_hours'],
                 'Extracurricular_Hours_Per_Day': input_data['extracurricular_hours'],
                 'Sleep_Hours_Per_Day': input_data['sleep_hours'],
@@ -70,22 +59,38 @@ class StressModelService:
                 'Physical_Activity_Hours_Per_Day': input_data['physical_hours'],
                 'GPA': gpa,
                 'Academic_Performance_Encoded': academic_encoded
-            }])
+            }
 
-            # Scaling
-            if self.scaler:
-                final_input = self.scaler.transform(df)
+            # 3. Feature Ordering (Crucial for model consistency)
+            if self.feature_names:
+                ordered_values = [raw_features[col] for col in self.feature_names]
             else:
-                final_input = df
+                # Fallback ordering based on training schema
+                ordered_values = [
+                    raw_features['Study_Hours_Per_Day'],
+                    raw_features['Extracurricular_Hours_Per_Day'],
+                    raw_features['Sleep_Hours_Per_Day'],
+                    raw_features['Social_Hours_Per_Day'],
+                    raw_features['Physical_Activity_Hours_Per_Day'],
+                    raw_features['GPA'],
+                    raw_features['Academic_Performance_Encoded']
+                ]
 
-            # Predict
+            # 4. Convert to Numpy Array (2D)
+            final_input = np.array([ordered_values])
+
+            # 5. Scaling
+            if self.scaler:
+                final_input = self.scaler.transform(final_input)
+
+            # 6. Inference
             prediction_idx = self.model.predict(final_input)[0]
             label_map = {0: "Low", 1: "Moderate", 2: "High"}
             
             return label_map.get(prediction_idx, "Unknown")
 
         except Exception as e:
-            print(f"❌ Prediction Error: {e}")
+            print(f"ERROR: Prediction failed: {e}")
             return f"Error: {str(e)}"
 
 ml_service = StressModelService()
